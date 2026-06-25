@@ -5,7 +5,17 @@
   "compatibility_date": "2026-06-01",
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
-    "GMAIL_LABEL": "PR-Processed"
+    "GMAIL_LABEL": "PR-Processed",
+    // Minimum minutes between syncs (KV-gated floor). Schedule is set by the cron
+    // below; this only blocks runs closer together than the value. 5 = no-op here.
+    "SYNC_INTERVAL_MINUTES": "5"
+  },
+  "kv_namespaces": [
+    { "binding": "SYNC_STATE", "id": "513d53c567e546ebbb16b45cc44f498d" }
+  ],
+  "triggers": {
+    // Every 6 hours (00:00, 06:00, 12:00, 18:00 UTC).
+    "crons": ["0 */6 * * *"]
   },
   "observability": {
     "enabled": true

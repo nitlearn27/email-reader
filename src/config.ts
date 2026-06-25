@@ -10,6 +10,10 @@ export interface Env {
 
   // Vars (wrangler.jsonc). Per-sender routing + destinations live in src/rules.json.
   GMAIL_LABEL: string;
+  SYNC_INTERVAL_MINUTES: string; // effective minutes between cron syncs (KV-gated)
+
+  // Bindings
+  SYNC_STATE: KVNamespace; // stores the cron last-run timestamp
 }
 
 export const GOOGLE_SCOPES = [

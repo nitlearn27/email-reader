@@ -38,6 +38,12 @@ A rule (one object in `src/rules.json`):
 Auth is a single Google identity — that account must have edit access to **every**
 destination spreadsheet.
 
+The Worker runs this sync **automatically every 6 hours** (Cloudflare Cron Trigger
+`0 */6 * * *` → `scheduled()` handler). Change the cadence by editing `triggers.crons` in
+`wrangler.jsonc` and `npm run deploy`. The `SYNC_INTERVAL_MINUTES` var is a KV-gated floor
+that blocks runs closer together than its value. `POST /api/sync` stays available for manual
+runs (it ignores the gate). Watch a cron run live with `wrangler tail`.
+
 INDmoney rule field mapping (PDF → sheet columns `A:E`):
 
 | PDF field        | Column        |

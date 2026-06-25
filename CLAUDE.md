@@ -14,6 +14,13 @@ rule are not processed.
 The original INDmoney "Purchase Request Processed" → MF Transactions flow is now just the first
 rule in the registry.
 
+The sync runs **automatically every 6 hours** via a Cloudflare Cron Trigger (`wrangler.jsonc`
+`triggers.crons` = `0 */6 * * *` → `scheduled()` in `src/index.ts`). The schedule is set by
+that cron expression; the `SYNC_INTERVAL_MINUTES` var is a KV-gated floor (`maybeSync()` reads
+a `lastRun` timestamp from the `SYNC_STATE` KV namespace and skips runs closer together than
+the value — currently `5`, a no-op against a 6h cron). Both cron and `POST /api/sync` call the
+same `runSync(env)`; the HTTP endpoint bypasses the gate (always runs) for manual/testing use.
+
 ## Commands
 
 ```bash
@@ -63,6 +70,6 @@ Key design facts a new contributor must know:
 ## Config
 
 - Secrets via `.dev.vars` (local) / `wrangler secret put` (prod): `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN`, and one PDF password per distinct `passwordEnv` used in `rules.json` (currently `PDF_PASSWORD_NIT` for INDmoney and `PDF_PASSWORD_AR` for NSE). The `Env` interface in `src/config.ts` is the source of truth — keep it in sync with both.
-- Non-secret vars live in `wrangler.jsonc`: just `GMAIL_LABEL`. Per-sender routing and destinations (spreadsheet id / tab / gid / columns) live in `src/rules.json`; spreadsheet IDs are not secrets so they belong there, but PDF passwords stay in Env and are referenced by `passwordEnv` name.
+- Non-secret vars live in `wrangler.jsonc`: `GMAIL_LABEL` and `SYNC_INTERVAL_MINUTES` (effective cron frequency; change + redeploy). The `SYNC_STATE` KV namespace (cron `lastRun` timestamp) is bound there too. Per-sender routing and destinations (spreadsheet id / tab / gid / columns) live in `src/rules.json`; spreadsheet IDs are not secrets so they belong there, but PDF passwords stay in Env and are referenced by `passwordEnv` name.
 - `GMAIL_REFRESH_TOKEN` is obtained once via `npm run get-token` (reads client id/secret from `.dev.vars`, redirect URI `http://localhost:5555/callback`). Authorization is one-time; publish the OAuth consent screen to **production** or test-mode tokens expire after 7 days.
 - A Google **API key cannot** read Gmail or write the sheet — OAuth user auth is required for both.

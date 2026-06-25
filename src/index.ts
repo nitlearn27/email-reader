@@ -70,23 +70,31 @@ app.post("/api/extract", async (c) => {
 
 /** Main pipeline: route new matching emails to their per-sender sheet. */
 app.post("/api/sync", async (c) => {
-  const env = c.env;
-  const result = {
-    processed: [] as { id: string; from: string; rows: string[][] }[],
-    skipped: [] as { id: string; reason: string }[],
-    errors: [] as { id: string; error: string; textPreview?: string }[],
-  };
+  const r = await runSync(c.env);
+  return c.json(r, "error" in r ? 500 : 200);
+});
+
+type SyncResult = {
+  processed: { id: string; from: string; rows: string[][] }[];
+  skipped: { id: string; reason: string }[];
+  errors: { id: string; error: string; textPreview?: string }[];
+  message?: string;
+};
+
+/** Run the full sync once. Shared by POST /api/sync and the cron handler. */
+async function runSync(env: Env): Promise<SyncResult | { error: string }> {
+  const result: SyncResult = { processed: [], skipped: [], errors: [] };
 
   let token: string;
   try {
     token = await getAccessToken(env);
   } catch (err) {
-    return c.json({ error: `Auth failed: ${String(err)}` }, 500);
+    return { error: `Auth failed: ${String(err)}` };
   }
 
   const messages = await listMessages(token, buildQuery(env.GMAIL_LABEL));
   if (messages.length === 0) {
-    return c.json({ message: "No new matching emails.", ...result });
+    return { ...result, message: "No new matching emails." };
   }
 
   const labelId = await ensureLabel(token, env.GMAIL_LABEL);
@@ -144,8 +152,8 @@ app.post("/api/sync", async (c) => {
     }
   }
 
-  return c.json(result);
-});
+  return result;
+}
 
 async function getSourceText(
   token: string,
@@ -179,4 +187,25 @@ async function getLayout(
   return layout;
 }
 
-export default app;
+export default {
+  fetch: app.fetch,
+  // Cron trigger (see wrangler.jsonc `triggers.crons`): gate on SYNC_INTERVAL_MINUTES, then sync.
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(maybeSync(env));
+  },
+};
+
+/** Run a sync only if SYNC_INTERVAL_MINUTES have elapsed since the last cron run. */
+async function maybeSync(env: Env): Promise<void> {
+  const intervalMs = (Number(env.SYNC_INTERVAL_MINUTES) || 5) * 60_000;
+  const last = Number(await env.SYNC_STATE.get("lastRun")) || 0;
+  const now = Date.now();
+  if (now - last < intervalMs) {
+    console.log(`cron skip: ${Math.round((now - last) / 60_000)}min since last run < ${intervalMs / 60_000}min`);
+    return;
+  }
+  // Mark before running so an overlapping tick doesn't double-fire.
+  await env.SYNC_STATE.put("lastRun", String(now));
+  const r = await runSync(env);
+  console.log("cron sync:", JSON.stringify(r));
+}
