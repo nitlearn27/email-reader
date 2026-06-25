@@ -1,0 +1,23 @@
+{
+  "name": "email-reader",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "types": "wrangler types",
+    "get-token": "node scripts/get-refresh-token.mjs"
+  },
+  "dependencies": {
+    "hono": "^4.6.14",
+    "unpdf": "^0.12.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250109.0",
+    "google-auth-library": "^9.15.0",
+    "typescript": "^5.7.2",
+    "wrangler": "^4.0.0"
+  }
+}
