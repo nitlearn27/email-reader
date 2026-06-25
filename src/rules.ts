@@ -1,6 +1,7 @@
 import rulesJson from "./rules.json";
 import { parseTransaction } from "./pdf/parse";
 import { parseNseTrades } from "./pdf/parse-nse";
+import { parseInvescoBody } from "./parse-invesco-body";
 
 export interface Destination {
   spreadsheetId: string;
@@ -42,6 +43,7 @@ export const parsers: Record<string, (text: string) => string[][] | null> = {
     return [[tx.date, tx.scheme, tx.amount, String(tx.units), String(tx.nav)]];
   },
   "nse-contract-note": (text) => parseNseTrades(text),
+  "invesco-processed-body": (text) => parseInvescoBody(text),
 };
 
 /**

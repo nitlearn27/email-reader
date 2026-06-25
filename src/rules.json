@@ -30,5 +30,20 @@
     "columns": ["Date", "Stock Name", "Quantity", "Order Type", "Requested Price", "Status"],
     "headerMatch": ["date", "stock name"],
     "dedupColumns": [0, 1, 2, 3, 4]
+  },
+  {
+    "from": "invescomf@kfintech.com",
+    "to": "infoarti123@gmail.com",
+    "subject": "Purchase Request Processed:",
+    "source": "body",
+    "parser": "invesco-processed-body",
+    "destination": {
+      "spreadsheetId": "1qE28h1yz6hV0jwi98whfPwGBhhLIDxKAj5xiHedtSBw",
+      "tab": "Sheet1",
+      "gid": 0
+    },
+    "columns": ["Date", "Mutual Fund Name", "Amount", "Type", "Units", "Status"],
+    "headerMatch": ["date", "mutual fund name"],
+    "dedupColumns": [0, 1, 4]
   }
 ]
