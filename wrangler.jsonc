@@ -5,10 +5,6 @@
   "compatibility_date": "2026-06-01",
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
-    "SPREADSHEET_ID": "1Bhm8j1PxHifBU4wEildcWo5y4pnBzqSZmKEQaVDVVLk",
-    "SHEET_TAB": "Sheet1",
-    "SHEET_GID": "0",
-    "EMAIL_SUBJECT": "Purchase Request Processed",
     "GMAIL_LABEL": "PR-Processed"
   },
   "observability": {

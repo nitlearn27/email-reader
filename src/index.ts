@@ -7,13 +7,16 @@ import {
   ensureLabel,
   findPdfPart,
   getAttachmentData,
+  getBodyText,
+  getFrom,
   getMessage,
+  getRecipients,
   getSubject,
   listMessages,
 } from "./google/gmail";
-import { getSheetLayout, insertRowBelowHeader, isDuplicate, type TxRow } from "./google/sheets";
+import { getSheetLayout, insertRowBelowHeader, isDuplicate } from "./google/sheets";
 import { extractPdfText } from "./pdf/decrypt";
-import { parseTransaction } from "./pdf/parse";
+import { buildQuery, matchRule, parsers, rules, type Rule } from "./rules";
 import { UI_HTML } from "./ui";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -22,45 +25,54 @@ app.get("/", (c) => c.html(UI_HTML));
 
 app.get("/healthz", (c) => {
   const e = c.env;
+  const passwordEnvs = [...new Set(rules.map((r) => r.passwordEnv).filter(Boolean))] as string[];
   return c.json({
     ok: true,
     config: {
       GMAIL_CLIENT_ID: !!e.GMAIL_CLIENT_ID,
       GMAIL_CLIENT_SECRET: !!e.GMAIL_CLIENT_SECRET,
       GMAIL_REFRESH_TOKEN: !!e.GMAIL_REFRESH_TOKEN,
-      PDF_PASSWORD: !!e.PDF_PASSWORD,
-      SPREADSHEET_ID: e.SPREADSHEET_ID,
-      SHEET_TAB: e.SHEET_TAB,
-      EMAIL_SUBJECT: e.EMAIL_SUBJECT,
       GMAIL_LABEL: e.GMAIL_LABEL,
+      rules: rules.length,
+      passwordEnvs: Object.fromEntries(
+        passwordEnvs.map((k) => [k, !!(e as unknown as Record<string, unknown>)[k]]),
+      ),
     },
   });
 });
 
-/** Test-only: decrypt + parse an uploaded PDF without touching Gmail/Sheets. */
+/** Test-only: run a parser over an uploaded PDF or raw body text, no Gmail/Sheets writes. */
 app.post("/api/extract", async (c) => {
   const body = await c.req.parseBody();
-  const file = body["file"];
-  if (!(file instanceof File)) {
-    return c.json({ error: "Upload a PDF in the 'file' field" }, 400);
+  const parserName = (body["parser"] as string) || "indmoney-cas";
+  const parse = parsers[parserName];
+  if (!parse) {
+    return c.json({ error: `Unknown parser '${parserName}'. Known: ${Object.keys(parsers).join(", ")}` }, 400);
   }
-  const password = (body["password"] as string) || c.env.PDF_PASSWORD;
-  const bytes = new Uint8Array(await file.arrayBuffer());
 
   try {
-    const text = await extractPdfText(bytes, password);
-    const parsed = parseTransaction(text);
-    return c.json({ parsed, textPreview: text.slice(0, 2000) });
+    let text: string;
+    const file = body["file"];
+    if (file instanceof File) {
+      const password = (body["password"] as string) || c.env.PDF_PASSWORD_NIT;
+      text = await extractPdfText(new Uint8Array(await file.arrayBuffer()), password);
+    } else if (typeof body["text"] === "string") {
+      text = body["text"] as string;
+    } else {
+      return c.json({ error: "Provide a PDF in 'file' or raw body in 'text'" }, 400);
+    }
+    const rows = parse(text);
+    return c.json({ parser: parserName, rows, textPreview: text.slice(0, 2000) });
   } catch (err) {
     return c.json({ error: String(err) }, 500);
   }
 });
 
-/** Main pipeline: process new matching emails into the sheet. */
+/** Main pipeline: route new matching emails to their per-sender sheet. */
 app.post("/api/sync", async (c) => {
   const env = c.env;
   const result = {
-    processed: [] as { id: string; row: TxRow }[],
+    processed: [] as { id: string; from: string; rows: string[][] }[],
     skipped: [] as { id: string; reason: string }[],
     errors: [] as { id: string; error: string; textPreview?: string }[],
   };
@@ -72,50 +84,60 @@ app.post("/api/sync", async (c) => {
     return c.json({ error: `Auth failed: ${String(err)}` }, 500);
   }
 
-  const query = `subject:"${env.EMAIL_SUBJECT}" has:attachment -label:${env.GMAIL_LABEL} newer_than:60d`;
-  const messages = await listMessages(token, query);
-
+  const messages = await listMessages(token, buildQuery(env.GMAIL_LABEL));
   if (messages.length === 0) {
     return c.json({ message: "No new matching emails.", ...result });
   }
 
   const labelId = await ensureLabel(token, env.GMAIL_LABEL);
-  const { headerRowIndex, dataRows: existing } = await getSheetLayout(token, env);
+  // Cache each destination's layout so multiple emails to one sheet share a read.
+  const layouts = new Map<string, { headerRowIndex: number; dataRows: string[][] }>();
 
   for (const ref of messages) {
     try {
       const msg = await getMessage(token, ref.id);
-      const part = findPdfPart(msg.payload);
-      if (!part?.body?.attachmentId) {
+      const subject = getSubject(msg);
+      const body = getBodyText(msg);
+      const haystack = [subject, getFrom(msg), getRecipients(msg), body].join(" ").toLowerCase();
+      const rule = matchRule(subject, haystack);
+      if (!rule) {
+        // Fetched via Gmail's broad match but no rule's from/to/subject all present.
+        result.skipped.push({ id: ref.id, reason: "no matching rule" });
+        continue;
+      }
+
+      const text = await getSourceText(token, ref.id, msg, rule, env);
+      if (text == null) {
         result.errors.push({ id: ref.id, error: "no PDF attachment found" });
         continue;
       }
 
-      const b64 = await getAttachmentData(token, ref.id, part.body.attachmentId);
-      const bytes = base64urlToBytes(b64);
-      const text = await extractPdfText(bytes, env.PDF_PASSWORD);
-      const tx = parseTransaction(text);
-
-      if (!tx.date || !tx.scheme || !tx.amount || tx.units == null || tx.nav == null) {
+      const rows = parsers[rule.parser]?.(text);
+      if (!rows || rows.length === 0) {
         result.errors.push({
           id: ref.id,
-          error: `incomplete parse: ${JSON.stringify(tx)} (subject: ${getSubject(msg)})`,
+          error: `incomplete parse via '${rule.parser}' (from: ${rule.from})`,
           textPreview: text.slice(0, 1500),
         });
         continue;
       }
 
-      const row: TxRow = [tx.date, tx.scheme, tx.amount, String(tx.units), String(tx.nav)];
-
-      if (isDuplicate(existing, tx.date, tx.scheme, String(tx.units))) {
-        result.skipped.push({ id: ref.id, reason: "duplicate row already in sheet" });
-      } else {
-        await insertRowBelowHeader(token, env, headerRowIndex, row);
-        existing.unshift(row);
-        result.processed.push({ id: ref.id, row });
+      const layout = await getLayout(token, rule, layouts);
+      const inserted: string[][] = [];
+      let dupes = 0;
+      for (const row of rows) {
+        if (isDuplicate(layout.dataRows, row, rule.dedupColumns)) {
+          dupes++;
+        } else {
+          await insertRowBelowHeader(token, rule.destination, layout.headerRowIndex, row);
+          layout.dataRows.unshift(row);
+          inserted.push(row);
+        }
       }
+      if (inserted.length) result.processed.push({ id: ref.id, from: rule.from, rows: inserted });
+      if (dupes) result.skipped.push({ id: ref.id, reason: `${dupes} duplicate row(s) already in sheet` });
 
-      // Label even when skipped so it is not re-fetched next run.
+      // Label once after handling all rows (even if all were duplicates) so it is not re-fetched.
       await addLabel(token, ref.id, labelId);
     } catch (err) {
       result.errors.push({ id: ref.id, error: String(err) });
@@ -124,5 +146,37 @@ app.post("/api/sync", async (c) => {
 
   return c.json(result);
 });
+
+async function getSourceText(
+  token: string,
+  msgId: string,
+  msg: Awaited<ReturnType<typeof getMessage>>,
+  rule: Rule,
+  env: Env,
+): Promise<string | null> {
+  if (rule.source === "body") return getBodyText(msg);
+
+  const part = findPdfPart(msg.payload);
+  if (!part?.body?.attachmentId) return null;
+  const b64 = await getAttachmentData(token, msgId, part.body.attachmentId);
+  const password = rule.passwordEnv
+    ? (env as unknown as Record<string, string>)[rule.passwordEnv]
+    : "";
+  return extractPdfText(base64urlToBytes(b64), password);
+}
+
+async function getLayout(
+  token: string,
+  rule: Rule,
+  cache: Map<string, { headerRowIndex: number; dataRows: string[][] }>,
+) {
+  const key = `${rule.destination.spreadsheetId}|${rule.destination.tab}`;
+  let layout = cache.get(key);
+  if (!layout) {
+    layout = await getSheetLayout(token, rule.destination, rule.headerMatch, rule.columns.length);
+    cache.set(key, layout);
+  }
+  return layout;
+}
 
 export default app;

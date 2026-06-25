@@ -3,13 +3,12 @@ export interface Env {
   GMAIL_CLIENT_ID: string;
   GMAIL_CLIENT_SECRET: string;
   GMAIL_REFRESH_TOKEN: string;
-  PDF_PASSWORD: string;
+  // PDF decryption passwords, referenced by name from each rule's `passwordEnv`.
+  // Add more as new pdf rules need them.
+  PDF_PASSWORD_NIT: string;
+  PDF_PASSWORD_AR: string;
 
-  // Vars (wrangler.jsonc)
-  SPREADSHEET_ID: string;
-  SHEET_TAB: string;
-  SHEET_GID: string;
-  EMAIL_SUBJECT: string;
+  // Vars (wrangler.jsonc). Per-sender routing + destinations live in src/rules.json.
   GMAIL_LABEL: string;
 }
 

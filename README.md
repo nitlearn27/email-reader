@@ -1,22 +1,44 @@
-# Email Reader → MF Transaction Sync
+# Email Reader → Transaction Sync
 
-Cloudflare Worker that turns **"Purchase Request Processed"** emails (with a
-password-protected PDF) in `nit4infy2@gmail.com` into rows in the
-[**MF Transactions** sheet](https://docs.google.com/spreadsheets/d/1Bhm8j1PxHifBU4wEildcWo5y4pnBzqSZmKEQaVDVVLk/edit).
+Cloudflare Worker that turns transaction emails in one Gmail mailbox into rows in
+Google Sheets, **routed by who sent the email**. Each sender/subject maps to its own
+destination sheet and its own parser via a rule registry (`src/rules.json`). The first
+rule is the original INDmoney **"Purchase Request Processed"** → MF Transactions flow.
 
 ## How it works
 
 ```
 POST /api/sync
-  → find new emails  subject:"Purchase Request Processed" -label:PR-Processed
-  → download PDF attachment
-  → decrypt with PDF_PASSWORD, extract text (pdf.js / unpdf)
-  → parse: Scheme · Order Date · Amount · Units · NAV
-  → dedup (date+scheme+units), insert row at top of sheet
+  → build query from rules: OR of (from:… subject:"…") + -label:PR-Processed + newer_than:60d
+  → find new matching emails  (unknown senders are never fetched)
+  → for each: match rule by exact From + Subject
+       source=pdf  → download attachment, decrypt with the rule's passwordEnv, extract text
+       source=body → read the plain-text email body
+  → run rule's parser → row aligned to the rule's columns
+  → dedup (rule.dedupColumns), insert row at top of the rule's destination sheet
   → label email PR-Processed (so it is never reprocessed)
 ```
 
-Field mapping (PDF → sheet columns `A:E`):
+A rule (one object in `src/rules.json`):
+
+```jsonc
+{
+  "from": "sender@example.com",          // exact match
+  "subject": "Purchase Request Processed",
+  "source": "pdf",                        // "pdf" | "body"
+  "passwordEnv": "PDF_PASSWORD_NIT",      // (pdf) name of the Env secret with the password
+  "parser": "indmoney-cas",               // key into the parsers registry in src/rules.ts
+  "destination": { "spreadsheetId": "…", "tab": "Sheet1", "gid": 0 },
+  "columns": ["Order Date", "Scheme Name", "Amount", "Units", "NAV"],
+  "headerMatch": ["order date", "scheme name"],
+  "dedupColumns": [0, 1, 3]
+}
+```
+
+Auth is a single Google identity — that account must have edit access to **every**
+destination spreadsheet.
+
+INDmoney rule field mapping (PDF → sheet columns `A:E`):
 
 | PDF field        | Column        |
 | ---------------- | ------------- |
@@ -33,7 +55,7 @@ Field mapping (PDF → sheet columns `A:E`):
 | GET    | `/`            | Test UI |
 | GET    | `/healthz`     | Which secrets/vars are configured |
 | POST   | `/api/sync`    | Run the full pipeline |
-| POST   | `/api/extract` | Upload a PDF (+ optional `password`) → parsed fields only (no writes) |
+| POST   | `/api/extract` | Run a `parser` over a PDF `file` (+ optional `password`) or raw `text` → `{ parser, rows }` only (no writes) |
 
 ## Setup
 
@@ -45,33 +67,41 @@ Field mapping (PDF → sheet columns `A:E`):
 ### 2. Install & get a refresh token
 ```bash
 npm install
-npm run get-token          # opens consent, prints GOOGLE_REFRESH_TOKEN
+npm run get-token          # opens consent, prints GMAIL_REFRESH_TOKEN
 ```
 
 ### 3. Local secrets
 ```bash
 cp .dev.vars.example .dev.vars
-# fill GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN, PDF_PASSWORD
+# fill GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN, PDF_PASSWORD_NIT, PDF_PASSWORD_AR
 ```
 
 ### 4. Run locally
 ```bash
 npm run dev                # http://localhost:8787
 ```
-Open the page → **Test extraction** with a real sample PDF first to confirm the
-five fields parse, then **Run sync**.
+Open the page → **Test extraction**: pick the rule's `parser`, upload a real sample
+PDF (or paste the body text), confirm the row parses, then **Run sync**.
 
-> The parser in `src/pdf/parse.ts` is tuned against the INDmoney layout but
-> depends on the actual PDF text. If a field comes back `null`, adjust the
-> regexes there using the `textPreview` returned by `/api/extract`.
+> Parsers live in the `parsers` registry in `src/rules.ts` (the INDmoney one wraps
+> `src/pdf/parse.ts`). They are layout-dependent. If a cell comes back `null`, adjust
+> the regex using the `textPreview` returned by `/api/extract`.
+
+### Add a new sender
+1. Add a rule to `src/rules.json` (from, subject, source, destination, columns, …).
+2. Add a parser function under that rule's `parser` key in `src/rules.ts`.
+3. Grant the authorized Google account edit access to the destination sheet.
+4. For an encrypted PDF with a non-default password, add the secret named by `passwordEnv`
+   to `.dev.vars` / `wrangler secret put` and to the `Env` interface in `src/config.ts`.
 
 ## Deploy
 ```bash
 wrangler deploy
-wrangler secret put GOOGLE_CLIENT_ID
-wrangler secret put GOOGLE_CLIENT_SECRET
-wrangler secret put GOOGLE_REFRESH_TOKEN
-wrangler secret put PDF_PASSWORD
+wrangler secret put GMAIL_CLIENT_ID
+wrangler secret put GMAIL_CLIENT_SECRET
+wrangler secret put GMAIL_REFRESH_TOKEN
+wrangler secret put PDF_PASSWORD_NIT      # INDmoney
+wrangler secret put PDF_PASSWORD_AR       # NSE contract notes (+ any other passwordEnv)
 ```
 
-Non-secret config (spreadsheet id, tab, subject, label) lives in `wrangler.jsonc`.
+Routing and destinations live in `src/rules.json`; only `GMAIL_LABEL` remains in `wrangler.jsonc`.

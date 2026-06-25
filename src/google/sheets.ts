@@ -1,9 +1,6 @@
-import type { Env } from "../config";
+import type { Destination } from "../rules";
 
 const BASE = "https://sheets.googleapis.com/v4/spreadsheets";
-
-/** Column order of the "MF Transactions" sheet. */
-export type TxRow = [date: string, scheme: string, amount: string, units: string, nav: string];
 
 export interface SheetLayout {
   headerRowIndex: number; // 0-based grid index of the header row
@@ -21,26 +18,41 @@ async function sheetsFetch<T>(token: string, path: string, init?: RequestInit): 
   return (await res.json()) as T;
 }
 
+/** 0-based column index → A1 column letters (0→A, 25→Z, 26→AA). */
+function colLetter(index: number): string {
+  let n = index;
+  let s = "";
+  do {
+    s = String.fromCharCode(65 + (n % 26)) + s;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return s;
+}
+
 /**
- * Locate the header row dynamically (the sheet keeps intentional blank/note rows
- * above it, so the header is not at a fixed row number) and return the data rows
- * below it.
+ * Locate the header row dynamically (sheets keep intentional blank/note rows above
+ * it, so the header is not at a fixed row number) and return the data rows below it.
+ * `headerMatch` is the list of lowercased leading cells that identify the header.
  */
-export async function getSheetLayout(token: string, env: Env): Promise<SheetLayout> {
-  const range = `${env.SHEET_TAB}!A1:E1000`;
+export async function getSheetLayout(
+  token: string,
+  dest: Destination,
+  headerMatch: string[],
+  width: number,
+): Promise<SheetLayout> {
+  const lastCol = colLetter(width - 1);
+  const range = `${dest.tab}!A1:${lastCol}1000`;
   const data = await sheetsFetch<{ values?: string[][] }>(
     token,
-    `/${env.SPREADSHEET_ID}/values/${encodeURIComponent(range)}`,
+    `/${dest.spreadsheetId}/values/${encodeURIComponent(range)}`,
   );
   const rows = data.values ?? [];
 
-  const headerRowIndex = rows.findIndex(
-    (r) =>
-      (r[0] ?? "").trim().toLowerCase() === "order date" &&
-      (r[1] ?? "").trim().toLowerCase() === "scheme name",
+  const headerRowIndex = rows.findIndex((r) =>
+    headerMatch.every((h, i) => (r[i] ?? "").trim().toLowerCase() === h),
   );
   if (headerRowIndex === -1) {
-    throw new Error("Could not locate the header row (Order Date | Scheme Name | …) in the sheet.");
+    throw new Error(`Could not locate the header row (${headerMatch.join(" | ")}) in ${dest.tab}.`);
   }
 
   const dataRows = rows
@@ -50,16 +62,16 @@ export async function getSheetLayout(token: string, env: Env): Promise<SheetLayo
   return { headerRowIndex, dataRows };
 }
 
-/** Insert a transaction as a new row directly below the header (newest-first). */
+/** Insert a row directly below the header (newest-first). */
 export async function insertRowBelowHeader(
   token: string,
-  env: Env,
+  dest: Destination,
   headerRowIndex: number,
-  row: TxRow,
+  row: string[],
 ): Promise<void> {
   const gridIndex = headerRowIndex + 1; // 0-based position for the new row
 
-  await sheetsFetch(token, `/${env.SPREADSHEET_ID}:batchUpdate`, {
+  await sheetsFetch(token, `/${dest.spreadsheetId}:batchUpdate`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -67,7 +79,7 @@ export async function insertRowBelowHeader(
         {
           insertDimension: {
             range: {
-              sheetId: Number(env.SHEET_GID),
+              sheetId: dest.gid,
               dimension: "ROWS",
               startIndex: gridIndex,
               endIndex: gridIndex + 1,
@@ -80,10 +92,10 @@ export async function insertRowBelowHeader(
   });
 
   const rowNumber = gridIndex + 1; // 1-based row for the A1 range
-  const range = `${env.SHEET_TAB}!A${rowNumber}:E${rowNumber}`;
+  const range = `${dest.tab}!A${rowNumber}:${colLetter(row.length - 1)}${rowNumber}`;
   await sheetsFetch(
     token,
-    `/${env.SPREADSHEET_ID}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+    `/${dest.spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
     {
       method: "PUT",
       headers: { "content-type": "application/json" },
@@ -92,12 +104,12 @@ export async function insertRowBelowHeader(
   );
 }
 
-/** Dedup key = Order Date + Scheme Name + Units (columns A, B, D). */
-export function rowKey(date: string, scheme: string, units: string): string {
-  return `${date.trim()}|${scheme.trim().toLowerCase()}|${units.trim()}`;
+/** Duplicate key built from the given column indices. */
+export function rowKey(row: string[], dedupColumns: number[]): string {
+  return dedupColumns.map((i) => (row[i] ?? "").trim().toLowerCase()).join("|");
 }
 
-export function isDuplicate(existing: string[][], date: string, scheme: string, units: string): boolean {
-  const key = rowKey(date, scheme, units);
-  return existing.some((r) => rowKey(r[0] ?? "", r[1] ?? "", r[3] ?? "") === key);
+export function isDuplicate(existing: string[][], row: string[], dedupColumns: number[]): boolean {
+  const key = rowKey(row, dedupColumns);
+  return existing.some((r) => rowKey(r, dedupColumns) === key);
 }

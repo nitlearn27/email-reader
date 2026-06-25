@@ -57,6 +57,8 @@ export const UI_HTML = /* html */ `<!DOCTYPE html>
   <section>
     <h2>Test extraction <span class="tag">PDF only</span></h2>
     <p style="color:#9aa0ac;margin:.25rem 0 0">Upload a sample encrypted PDF to verify the fields parse correctly. Nothing is written.</p>
+    <label for="parser">Parser</label>
+    <input type="text" id="parser" placeholder="indmoney-cas" value="indmoney-cas" />
     <label for="file">Encrypted PDF</label>
     <input type="file" id="file" accept="application/pdf" />
     <label for="pwd">Password (optional — falls back to server config)</label>
@@ -88,16 +90,15 @@ $("extractBtn").onclick = async () => {
   try {
     const fd = new FormData();
     fd.append("file", f);
+    fd.append("parser", $("parser").value || "indmoney-cas");
     if ($("pwd").value) fd.append("password", $("pwd").value);
     const res = await fetch("/api/extract", { method: "POST", body: fd });
     const data = await res.json();
-    if (data.parsed) {
-      const p = data.parsed;
+    if (Array.isArray(data.rows)) {
       fields.hidden = false;
-      fields.innerHTML = [
-        ["Scheme Name", p.scheme], ["Order Date", p.date],
-        ["Amount", p.amount], ["Units", p.units], ["NAV", p.nav],
-      ].map(([k, v]) => '<div><span>' + k + ':</span> ' + (v ?? '—') + '</div>').join("");
+      fields.innerHTML = data.rows
+        .map((row, n) => '<div><b>row ' + (n + 1) + '</b>: ' + row.map((v) => (v ?? '—')).join(' · ') + '</div>')
+        .join("");
     }
     out.textContent = JSON.stringify(data, null, 2);
   } catch (e) { out.textContent = String(e); }

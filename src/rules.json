@@ -1,0 +1,34 @@
+[
+  {
+    "from": "invescomf@kfintech.com",
+    "to": "nm2580@gmail.com",
+    "subject": "Purchase Request Processed",
+    "source": "pdf",
+    "passwordEnv": "PDF_PASSWORD_NIT",
+    "parser": "indmoney-cas",
+    "destination": {
+      "spreadsheetId": "1Bhm8j1PxHifBU4wEildcWo5y4pnBzqSZmKEQaVDVVLk",
+      "tab": "Sheet1",
+      "gid": 0
+    },
+    "columns": ["Order Date", "Scheme Name", "Amount", "Units", "NAV"],
+    "headerMatch": ["order date", "scheme name"],
+    "dedupColumns": [0, 1, 3]
+  },
+  {
+    "from": "nse-direct@nse.co.in",
+    "to": "infoarti123@gmail.com",
+    "subject": "Trades executed at NSE",
+    "source": "pdf",
+    "passwordEnv": "PDF_PASSWORD_AR",
+    "parser": "nse-contract-note",
+    "destination": {
+      "spreadsheetId": "1Fz5jPJV1Uuujnv5Y1KFeTJJIMH-DIX4t0K-vvM372rA",
+      "tab": "Sheet1",
+      "gid": 0
+    },
+    "columns": ["Date", "Stock Name", "Quantity", "Order Type", "Requested Price", "Status"],
+    "headerMatch": ["date", "stock name"],
+    "dedupColumns": [0, 1, 2, 3, 4]
+  }
+]
