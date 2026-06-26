@@ -1,5 +1,32 @@
 import { toDDMMYYYY } from "../format";
 
+/** Standardize common stock and ETF names to match the spreadsheet convention. */
+export function cleanStockName(name: string): string {
+  const cleaned = name.trim();
+  const lower = cleaned.toLowerCase();
+  
+  if (lower.includes("motilal") && lower.includes("nasdaq")) {
+    return "Motilal Oswal NASDAQ 100 ETF";
+  }
+  if (
+    lower.includes("uti nifty n") || 
+    (lower.includes("uti") && lower.includes("nifty") && lower.includes("next"))
+  ) {
+    return "UTI Nifty Next 50 ETF";
+  }
+  if (lower.includes("nippon") && lower.includes("silver")) {
+    return "Nippon India Silver ETF";
+  }
+  if (
+    lower.includes("sbi") && 
+    lower.includes("nifty") && 
+    (lower.includes("50") || lower.includes("etf"))
+  ) {
+    return "SBI ETF Nifty 50";
+  }
+  return cleaned;
+}
+
 /**
  * Parse an NSE "Trades executed at NSE" contract note (Capital Market section).
  *
@@ -27,7 +54,7 @@ export function parseNseTrades(text: string): string[][] {
     if (!date) continue;
     rows.push([
       date,
-      name.trim(),
+      cleanStockName(name),
       String(Number(qty)),
       side === "B" ? "Buy" : "Sell",
       `₹${price}`,

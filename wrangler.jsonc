@@ -14,8 +14,8 @@
     { "binding": "SYNC_STATE", "id": "513d53c567e546ebbb16b45cc44f498d" }
   ],
   "triggers": {
-    // Every 6 hours (00:00, 06:00, 12:00, 18:00 UTC).
-    "crons": ["0 */6 * * *"]
+    // Every 24 hours (00:00 UTC).
+    "crons": ["0 0 * * *"]
   },
   "observability": {
     "enabled": true

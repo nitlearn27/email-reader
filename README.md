@@ -2,8 +2,8 @@
 
 Cloudflare Worker that turns transaction emails in one Gmail mailbox into rows in
 Google Sheets, **routed by who sent the email**. Each sender/subject maps to its own
-destination sheet and its own parser via a rule registry (`src/rules.json`). The first
-rule is the original INDmoney **"Purchase Request Processed"** → MF Transactions flow.
+destination sheet and its own parser via a rule registry (`src/rules.json`). Rules include
+PDF parsing (INDmoney, NSE) and email body parsing (Invesco).
 
 ## How it works
 
@@ -38,13 +38,15 @@ A rule (one object in `src/rules.json`):
 Auth is a single Google identity — that account must have edit access to **every**
 destination spreadsheet.
 
-The Worker runs this sync **automatically every 6 hours** (Cloudflare Cron Trigger
-`0 */6 * * *` → `scheduled()` handler). Change the cadence by editing `triggers.crons` in
+The Worker runs this sync **automatically every 24 hours** (Cloudflare Cron Trigger
+`0 0 * * *` → `scheduled()` handler). Change the cadence by editing `triggers.crons` in
 `wrangler.jsonc` and `npm run deploy`. The `SYNC_INTERVAL_MINUTES` var is a KV-gated floor
 that blocks runs closer together than its value. `POST /api/sync` stays available for manual
 runs (it ignores the gate). Watch a cron run live with `wrangler tail`.
 
-INDmoney rule field mapping (PDF → sheet columns `A:E`):
+### Field Mappings
+
+#### 1. INDmoney rule (PDF → sheet columns `A:E`):
 
 | PDF field        | Column        |
 | ---------------- | ------------- |
@@ -53,6 +55,29 @@ INDmoney rule field mapping (PDF → sheet columns `A:E`):
 | Amount           | `Amount` (₹NNK) |
 | total NAV        | `Units`       |
 | purchased NAV    | `NAV`         |
+
+#### 2. Invesco body rule (Body → sheet columns `A:F`):
+
+| Body field              | Column             |
+| ----------------------- | ------------------ |
+| Scheme Details          | `Mutual Fund Name` (normalized, e.g. "Invesco India Mid Cap Fund Direct Growth") |
+| Trade Date / NAV Date   | `Date` (formatted to `D MMM 'YY`, e.g. "3 Jun '26") |
+| Amount (Rs.)            | `Amount` (formatted with commas, e.g. "₹49,997.50") |
+| Static "Buy"            | `Type`             |
+| Units (Nos.) Allotted   | `Units`            |
+| Static "Completed"      | `Status`           |
+
+#### 3. NSE rule (PDF → sheet columns `A:F` for Arti, `A:E` for Nit):
+
+| PDF field                                | Column                     |
+| ---------------------------------------- | -------------------------- |
+| Trade Date (Prefix of 17-digit Trade No) | `Date` (DD-MM-YYYY)        |
+| Security Name (Standardized/Cleaned)     | `Stock Name`               |
+| Quantity                                 | `Quantity`                 |
+| B / S                                    | `Order Type` ("Buy" / "Sell") |
+| Price                                    | `Requested Price` (₹NN.NN) |
+| Static "Success"                         | `Status` (Arti's sheet only) |
+
 
 ## Endpoints
 

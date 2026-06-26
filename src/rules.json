@@ -45,5 +45,21 @@
     "columns": ["Date", "Mutual Fund Name", "Amount", "Type", "Units", "Status"],
     "headerMatch": ["date", "mutual fund name"],
     "dedupColumns": [0, 1, 4]
+  },
+  {
+    "from": "nse-direct@nse.co.in",
+    "to": "nm2580@gmail.com",
+    "subject": "Trades executed at NSE",
+    "source": "pdf",
+    "passwordEnv": "PDF_PASSWORD_NIT",
+    "parser": "nse-contract-note-nit",
+    "destination": {
+      "spreadsheetId": "1oCwW_ScMVPtrhywc9nyQNAHzC0VhPM2W9Qp_2xAv6bQ",
+      "tab": "Sheet1",
+      "gid": 0
+    },
+    "columns": ["Date", "Stock Name", "Quantity", "Order Type", "Requested Price"],
+    "headerMatch": ["date", "stock name"],
+    "dedupColumns": [0, 1, 2, 3, 4]
   }
 ]

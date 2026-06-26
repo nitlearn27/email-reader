@@ -43,6 +43,10 @@ export const parsers: Record<string, (text: string) => string[][] | null> = {
     return [[tx.date, tx.scheme, tx.amount, String(tx.units), String(tx.nav)]];
   },
   "nse-contract-note": (text) => parseNseTrades(text),
+  "nse-contract-note-nit": (text) => {
+    const rows = parseNseTrades(text);
+    return rows ? rows.map((r) => r.slice(0, 5)) : null;
+  },
   "invesco-processed-body": (text) => parseInvescoBody(text),
 };
 
