@@ -12,6 +12,7 @@ export async function extractPdfText(bytes: Uint8Array, password?: string): Prom
     password: password ?? "",
     isEvalSupported: false,
     useSystemFonts: false,
+    standardFontDataUrl: "https://unpkg.com/pdfjs-dist@4.6.82/standard_fonts/",
   }).promise;
 
   const pages: string[] = [];

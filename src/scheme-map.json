@@ -1,7 +1,7 @@
 {
   "_comment": "Maps a lowercase substring found in the PDF statement to the scheme name written to the sheet. Add new funds here as they appear. First matching key wins.",
   "invesco india midcap fund": "Invesco India Mid Cap Fund",
-  "invesco india smallcap fund": "Invesco India Smallcap Fund",
+  "invesco india small cap fund": "Invesco India Smallcap Fund",
   "edelweiss technology fund": "Edelweiss Technology Fund",
   "edelweiss mid cap fund": "Edelweiss Mid Cap Fund",
   "nippon india large cap fund": "Nippon India Large Cap Fund",
