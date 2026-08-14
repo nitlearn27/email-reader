@@ -1,7 +1,9 @@
 import rulesJson from "./rules.json";
 import { parseTransaction } from "./pdf/parse";
 import { parseNseTrades } from "./pdf/parse-nse";
+import { parseEdelweissStatement } from "./pdf/parse-edelweiss";
 import { parseInvescoBody } from "./parse-invesco-body";
+import { parseGrowwBody } from "./parse-groww-body";
 
 export interface Destination {
   spreadsheetId: string;
@@ -15,6 +17,11 @@ export interface Rule {
   from: string; // original sender address that must appear in the message (header or body)
   to?: string; // if set, this recipient must also appear in the message (header or body)
   subject: string; // phrase that must appear in the Subject (substring, case-insensitive)
+  // Extra phrases that must ALL appear in the message. Used when one sender reuses the
+  // same subject for many products (e.g. Groww sends "Units allocated" for every fund):
+  // gating here keeps the other funds' emails out of the Gmail query entirely, so they
+  // are never fetched, never labeled and never reported as parse failures.
+  contains?: string[];
   source: "pdf" | "body";
   passwordEnv?: string; // (pdf) name of the Env secret holding the decryption password
   parser: string; // key into the parsers registry below
@@ -48,6 +55,14 @@ export const parsers: Record<string, (text: string) => string[][] | null> = {
     return rows ? rows.map((r) => r.slice(0, 5)) : null;
   },
   "invesco-processed-body": (text) => parseInvescoBody(text),
+  "groww-units-allocated": (text) => parseGrowwBody(text),
+  "kfintech-edelweiss-cas": (text) => {
+    const tx = parseEdelweissStatement(text);
+    if (!tx.date || !tx.scheme || !tx.amount || tx.units == null || tx.nav == null) {
+      return null;
+    }
+    return [[tx.date, tx.scheme, tx.amount, String(tx.units), String(tx.nav)]];
+  },
 };
 
 /**
@@ -60,6 +75,7 @@ export function buildQuery(label: string): string {
   const clauses = rules.map((r) => {
     const parts = [`subject:"${r.subject}"`, `"${r.from}"`];
     if (r.to) parts.push(`"${r.to}"`);
+    for (const phrase of r.contains ?? []) parts.push(`"${phrase}"`);
     return `(${parts.join(" ")})`;
   });
   const or = clauses.length === 1 ? clauses[0] : `(${clauses.join(" OR ")})`;
@@ -78,7 +94,8 @@ export function matchRule(subject: string, haystack: string): Rule | null {
       (r) =>
         subj.includes(r.subject.toLowerCase()) &&
         haystack.includes(r.from.toLowerCase()) &&
-        (!r.to || haystack.includes(r.to.toLowerCase())),
+        (!r.to || haystack.includes(r.to.toLowerCase())) &&
+        (r.contains ?? []).every((p) => haystack.includes(p.toLowerCase())),
     ) ?? null
   );
 }

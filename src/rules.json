@@ -16,6 +16,22 @@
     "dedupColumns": [0, 1, 3]
   },
   {
+    "from": "kfintechInvestor.edelweissmf@kfintech.com",
+    "to": "nm2580@gmail.com",
+    "subject": "Purchase Transaction Confirmation - Folio No.91037929312",
+    "source": "pdf",
+    "passwordEnv": "PDF_PASSWORD_NIT",
+    "parser": "kfintech-edelweiss-cas",
+    "destination": {
+      "spreadsheetId": "1Bhm8j1PxHifBU4wEildcWo5y4pnBzqSZmKEQaVDVVLk",
+      "tab": "Sheet1",
+      "gid": 0
+    },
+    "columns": ["Order Date", "Scheme Name", "Amount", "Units", "NAV"],
+    "headerMatch": ["order date", "scheme name"],
+    "dedupColumns": [0, 1, 3]
+  },
+  {
     "from": "nse-direct@nse.co.in",
     "to": "infoarti123@gmail.com",
     "subject": "Trades executed at NSE",
@@ -37,6 +53,21 @@
     "subject": "Purchase Request Processed:",
     "source": "body",
     "parser": "invesco-processed-body",
+    "destination": {
+      "spreadsheetId": "1qE28h1yz6hV0jwi98whfPwGBhhLIDxKAj5xiHedtSBw",
+      "tab": "Sheet1",
+      "gid": 0
+    },
+    "columns": ["Date", "Mutual Fund Name", "Amount", "Type", "Units", "Status"],
+    "headerMatch": ["date", "mutual fund name"],
+    "dedupColumns": [0, 1, 4]
+  },
+  {
+    "from": "noreply@groww.in",
+    "subject": "One-time investment: Units allocated",
+    "contains": ["Quant Small Cap"],
+    "source": "body",
+    "parser": "groww-units-allocated",
     "destination": {
       "spreadsheetId": "1qE28h1yz6hV0jwi98whfPwGBhhLIDxKAj5xiHedtSBw",
       "tab": "Sheet1",
