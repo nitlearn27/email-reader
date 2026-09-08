@@ -1,27 +1,10 @@
 [
   {
-    "from": "invescomf@kfintech.com",
+    "from": "transactions@transactions.indmoney.com",
     "to": "nm2580@gmail.com",
-    "subject": "Purchase Request Processed",
-    "source": "pdf",
-    "passwordEnv": "PDF_PASSWORD_NIT",
-    "parser": "indmoney-cas",
-    "destination": {
-      "spreadsheetId": "1Bhm8j1PxHifBU4wEildcWo5y4pnBzqSZmKEQaVDVVLk",
-      "tab": "Sheet1",
-      "gid": 0
-    },
-    "columns": ["Order Date", "Scheme Name", "Amount", "Units", "NAV"],
-    "headerMatch": ["order date", "scheme name"],
-    "dedupColumns": [0, 1, 3]
-  },
-  {
-    "from": "kfintechInvestor.edelweissmf@kfintech.com",
-    "to": "nm2580@gmail.com",
-    "subject": "Purchase Transaction Confirmation - Folio No.91037929312",
-    "source": "pdf",
-    "passwordEnv": "PDF_PASSWORD_NIT",
-    "parser": "kfintech-edelweiss-cas",
+    "subject": "Order Successful: Units allotted for your mutual fund buy",
+    "source": "body",
+    "parser": "indmoney-units-allotted",
     "destination": {
       "spreadsheetId": "1Bhm8j1PxHifBU4wEildcWo5y4pnBzqSZmKEQaVDVVLk",
       "tab": "Sheet1",

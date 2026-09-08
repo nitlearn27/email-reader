@@ -45,7 +45,7 @@ export const UI_HTML = /* html */ `<!DOCTYPE html>
 <body>
 <main>
   <h1>MF Transaction Sync</h1>
-  <p class="sub">Reads "Purchase Request Processed" emails → decrypts the PDF → updates the sheet.</p>
+  <p class="sub">Reads matching transaction emails and updates the appropriate sheet.</p>
 
   <section>
     <h2>Run sync <span class="tag">Gmail → Sheet</span></h2>
@@ -58,7 +58,7 @@ export const UI_HTML = /* html */ `<!DOCTYPE html>
     <h2>Test extraction <span class="tag">PDF only</span></h2>
     <p style="color:#9aa0ac;margin:.25rem 0 0">Upload a sample encrypted PDF to verify the fields parse correctly. Nothing is written.</p>
     <label for="parser">Parser</label>
-    <input type="text" id="parser" placeholder="indmoney-cas" value="indmoney-cas" />
+    <input type="text" id="parser" placeholder="nse-contract-note" value="nse-contract-note" />
     <label for="file">Encrypted PDF</label>
     <input type="file" id="file" accept="application/pdf" />
     <label for="pwd">Password (optional — falls back to server config)</label>
@@ -90,7 +90,7 @@ $("extractBtn").onclick = async () => {
   try {
     const fd = new FormData();
     fd.append("file", f);
-    fd.append("parser", $("parser").value || "indmoney-cas");
+    fd.append("parser", $("parser").value || "nse-contract-note");
     if ($("pwd").value) fd.append("password", $("pwd").value);
     const res = await fetch("/api/extract", { method: "POST", body: fd });
     const data = await res.json();

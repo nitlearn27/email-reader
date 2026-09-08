@@ -1,9 +1,8 @@
 import rulesJson from "./rules.json";
-import { parseTransaction } from "./pdf/parse";
 import { parseNseTrades } from "./pdf/parse-nse";
-import { parseEdelweissStatement } from "./pdf/parse-edelweiss";
 import { parseInvescoBody } from "./parse-invesco-body";
 import { parseGrowwBody } from "./parse-groww-body";
+import { parseIndmoneyBody } from "./parse-indmoney-body";
 
 export interface Destination {
   spreadsheetId: string;
@@ -42,13 +41,7 @@ export const rules: Rule[] = rulesJson as Rule[];
  * Add a new function here and reference it by key from rules.json as samples arrive.
  */
 export const parsers: Record<string, (text: string) => string[][] | null> = {
-  "indmoney-cas": (text) => {
-    const tx = parseTransaction(text);
-    if (!tx.date || !tx.scheme || !tx.amount || tx.units == null || tx.nav == null) {
-      return null;
-    }
-    return [[tx.date, tx.scheme, tx.amount, String(tx.units), String(tx.nav)]];
-  },
+  "indmoney-units-allotted": (text) => parseIndmoneyBody(text),
   "nse-contract-note": (text) => parseNseTrades(text),
   "nse-contract-note-nit": (text) => {
     const rows = parseNseTrades(text);
@@ -56,13 +49,6 @@ export const parsers: Record<string, (text: string) => string[][] | null> = {
   },
   "invesco-processed-body": (text) => parseInvescoBody(text),
   "groww-units-allocated": (text) => parseGrowwBody(text),
-  "kfintech-edelweiss-cas": (text) => {
-    const tx = parseEdelweissStatement(text);
-    if (!tx.date || !tx.scheme || !tx.amount || tx.units == null || tx.nav == null) {
-      return null;
-    }
-    return [[tx.date, tx.scheme, tx.amount, String(tx.units), String(tx.nav)]];
-  },
 };
 
 /**

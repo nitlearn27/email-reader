@@ -1,5 +1,6 @@
 {
-  "_comment": "Maps a lowercase substring found in the PDF statement to the scheme name written to the sheet. Add new funds here as they appear. First matching key wins.",
+  "_comment": "Maps a lowercase substring found in transaction source text to the scheme name written to the sheet. Add new funds here as they appear. First matching key wins.",
+  "invesco india mid cap fund": "Invesco India Mid Cap Fund",
   "invesco india midcap fund": "Invesco India Mid Cap Fund",
   "invesco india small cap fund": "Invesco India Smallcap Fund",
   "edelweiss technology fund": "Edelweiss Technology Fund",

@@ -44,7 +44,7 @@ app.get("/healthz", (c) => {
 /** Test-only: run a parser over an uploaded PDF or raw body text, no Gmail/Sheets writes. */
 app.post("/api/extract", async (c) => {
   const body = await c.req.parseBody();
-  const parserName = (body["parser"] as string) || "indmoney-cas";
+  const parserName = (body["parser"] as string) || "indmoney-units-allotted";
   const parse = parsers[parserName];
   if (!parse) {
     return c.json({ error: `Unknown parser '${parserName}'. Known: ${Object.keys(parsers).join(", ")}` }, 400);

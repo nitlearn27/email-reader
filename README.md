@@ -3,7 +3,7 @@
 Cloudflare Worker that turns transaction emails in one Gmail mailbox into rows in
 Google Sheets, **routed by who sent the email**. Each sender/subject maps to its own
 destination sheet and its own parser via a rule registry (`src/rules.json`). Rules include
-PDF parsing (INDmoney, NSE) and email body parsing (Invesco).
+PDF parsing for NSE contract notes and email-body parsing for mutual-fund confirmations.
 
 ## How it works
 
@@ -23,11 +23,11 @@ A rule (one object in `src/rules.json`):
 
 ```jsonc
 {
-  "from": "sender@example.com",          // exact match
-  "subject": "Purchase Request Processed",
-  "source": "pdf",                        // "pdf" | "body"
-  "passwordEnv": "PDF_PASSWORD_NIT",      // (pdf) name of the Env secret with the password
-  "parser": "indmoney-cas",               // key into the parsers registry in src/rules.ts
+  "from": "transactions@transactions.indmoney.com",
+  "to": "nm2580@gmail.com",
+  "subject": "Order Successful: Units allotted for your mutual fund buy",
+  "source": "body",                       // "pdf" | "body"
+  "parser": "indmoney-units-allotted",    // key into the parsers registry in src/rules.ts
   "destination": { "spreadsheetId": "…", "tab": "Sheet1", "gid": 0 },
   "columns": ["Order Date", "Scheme Name", "Amount", "Units", "NAV"],
   "headerMatch": ["order date", "scheme name"],
@@ -38,23 +38,23 @@ A rule (one object in `src/rules.json`):
 Auth is a single Google identity — that account must have edit access to **every**
 destination spreadsheet.
 
-The Worker runs this sync **automatically every 24 hours** (Cloudflare Cron Trigger
-`0 0 * * *` → `scheduled()` handler). Change the cadence by editing `triggers.crons` in
+The Worker runs this sync **automatically every 6 hours** (Cloudflare Cron Trigger
+`0 */6 * * *` → `scheduled()` handler). Change the cadence by editing `triggers.crons` in
 `wrangler.jsonc` and `npm run deploy`. The `SYNC_INTERVAL_MINUTES` var is a KV-gated floor
 that blocks runs closer together than its value. `POST /api/sync` stays available for manual
 runs (it ignores the gate). Watch a cron run live with `wrangler tail`.
 
 ### Field Mappings
 
-#### 1. INDmoney rule (PDF → sheet columns `A:E`):
+#### 1. INDmoney rule (email body → sheet columns `A:E`, only for `nm2580@gmail.com`):
 
-| PDF field        | Column        |
+| Email field      | Column        |
 | ---------------- | ------------- |
-| Fund / scheme    | `Scheme Name` |
-| transaction date | `Order Date` (DD-MM-YYYY) |
-| Amount           | `Amount` (₹NNK) |
-| total NAV        | `Units`       |
-| purchased NAV    | `NAV`         |
+| Fund             | `Scheme Name` |
+| Order date       | `Order Date` (DD-MM-YYYY) |
+| Buy Amount       | `Amount`      |
+| Units alloted/allotted | `Units` |
+| Allotted NAV     | `NAV`         |
 
 #### 2. Invesco body rule (Body → sheet columns `A:F`):
 
@@ -114,8 +114,8 @@ npm run dev                # http://localhost:8787
 Open the page → **Test extraction**: pick the rule's `parser`, upload a real sample
 PDF (or paste the body text), confirm the row parses, then **Run sync**.
 
-> Parsers live in the `parsers` registry in `src/rules.ts` (the INDmoney one wraps
-> `src/pdf/parse.ts`). They are layout-dependent. If a cell comes back `null`, adjust
+> Parsers live in the `parsers` registry in `src/rules.ts`. They are layout-dependent.
+> If a cell comes back `null`, adjust
 > the regex using the `textPreview` returned by `/api/extract`.
 
 ### Add a new sender
@@ -131,7 +131,7 @@ wrangler deploy
 wrangler secret put GMAIL_CLIENT_ID
 wrangler secret put GMAIL_CLIENT_SECRET
 wrangler secret put GMAIL_REFRESH_TOKEN
-wrangler secret put PDF_PASSWORD_NIT      # INDmoney
+wrangler secret put PDF_PASSWORD_NIT      # NSE contract notes for nm2580@gmail.com
 wrangler secret put PDF_PASSWORD_AR       # NSE contract notes (+ any other passwordEnv)
 ```
 
