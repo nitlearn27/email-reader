@@ -75,5 +75,22 @@
     "columns": ["Date", "Stock Name", "Quantity", "Order Type", "Requested Price"],
     "headerMatch": ["date", "stock name"],
     "dedupColumns": [0, 1, 2, 3, 4]
+  },
+  {
+    "from": "transactions@transactions.indmoney.com",
+    "subject": "order of",
+    "subjectRegex": "^(?:fwd:\\s*)*(?:BUY|SELL) order of .+ for \\$[\\d,.]+ is successful$",
+    "contains": ["is successful"],
+    "source": "body",
+    "parser": "indmoney-global-order",
+    "valueInputOption": "RAW",
+    "destination": {
+      "spreadsheetId": "1eH-k7xR3WIhsFAjtfkwow2DxS3eQFnb9X8xDZ-21fMs",
+      "tab": "Sheet1",
+      "gid": 0
+    },
+    "columns": ["Date", "Stock Name", "Quantity", "Order Type", "Requested Price", "Status"],
+    "headerMatch": ["date", "stock name"],
+    "dedupColumns": [0, 1, 2, 3, 4, 5]
   }
 ]

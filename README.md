@@ -4,12 +4,14 @@ Cloudflare Worker that turns transaction emails in one Gmail mailbox into rows i
 Google Sheets, **routed by who sent the email**. Each sender/subject maps to its own
 destination sheet and its own parser via a rule registry (`src/rules.json`). Rules include
 PDF parsing for NSE contract notes and email-body parsing for mutual-fund confirmations.
+The INDmoney global-stock rule reads successful orders already delivered to the
+configured `nit4infy2@gmail.com` inbox.
 
 ## How it works
 
 ```
 POST /api/sync
-  → build query from rules: OR of (from:… subject:"…") + -label:PR-Processed + newer_than:60d
+  → build query from rules: OR of matching phrases + -label:PR-Processed -in:sent + newer_than:60d
   → find new matching emails  (unknown senders are never fetched)
   → for each: match rule by exact From + Subject
        source=pdf  → download attachment, decrypt with the rule's passwordEnv, extract text
@@ -77,6 +79,18 @@ runs (it ignores the gate). Watch a cron run live with `wrangler tail`.
 | B / S                                    | `Order Type` ("Buy" / "Sell") |
 | Price                                    | `Requested Price` (₹NN.NN) |
 | Static "Success"                         | `Status` (Arti's sheet only) |
+
+#### 4. INDmoney global-stock orders (email body → Global Stocks `A:F`):
+
+Subjects must start with `BUY order of` or `SELL order of` (after any `Fwd:` prefix)
+and end with `is successful`. The original sender must be
+`transactions@transactions.indmoney.com`. `Requested Price` comes from the email's
+`Price:` field, not the dollar amount in the subject or `Amount:` field. `Order Type`
+comes from the email (for example, `Limit`); `Status` is `Buy` or `Sell` from the
+subject. The original forwarded date, stock name, and shares fill the other columns.
+After parsing, the Worker writes the row and labels the email as processed. Sent
+messages are excluded from the sync query, so a forwarded copy cannot be ingested
+again as a fresh transaction.
 
 
 ## Endpoints

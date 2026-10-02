@@ -87,6 +87,10 @@ export function getFrom(msg: GmailMessage): string {
   return getHeader(msg, "from");
 }
 
+export function getDate(msg: GmailMessage): string {
+  return getHeader(msg, "date");
+}
+
 /** Combined recipient text (all To + Cc + Delivered-To headers) for rule matching. */
 export function getRecipients(msg: GmailMessage): string {
   const wanted = new Set(["to", "cc", "delivered-to"]);

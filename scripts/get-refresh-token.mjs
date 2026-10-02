@@ -76,4 +76,4 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => console.log(`Waiting for the OAuth redirect on ${REDIRECT} …`));
+server.listen(PORT, "127.0.0.1", () => console.log(`Waiting for the OAuth redirect on ${REDIRECT} …`));

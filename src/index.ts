@@ -8,6 +8,7 @@ import {
   findPdfPart,
   getAttachmentData,
   getBodyText,
+  getDate,
   getFrom,
   getMessage,
   getRecipients,
@@ -61,7 +62,7 @@ app.post("/api/extract", async (c) => {
     } else {
       return c.json({ error: "Provide a PDF in 'file' or raw body in 'text'" }, 400);
     }
-    const rows = parse(text);
+    const rows = parse(text, String(body["subject"] ?? ""), String(body["date"] ?? ""));
     return c.json({ parser: parserName, rows, textPreview: text.slice(0, 2000) });
   } catch (err) {
     return c.json({ error: String(err) }, 500);
@@ -120,7 +121,7 @@ async function runSync(env: Env): Promise<SyncResult | { error: string }> {
         continue;
       }
 
-      const rows = parsers[rule.parser]?.(text);
+      const rows = parsers[rule.parser]?.(text, subject, getDate(msg));
       if (!rows || rows.length === 0) {
         result.errors.push({
           id: ref.id,
@@ -137,7 +138,7 @@ async function runSync(env: Env): Promise<SyncResult | { error: string }> {
         if (isDuplicate(layout.dataRows, row, rule.dedupColumns)) {
           dupes++;
         } else {
-          await insertRowBelowHeader(token, rule.destination, layout.headerRowIndex, row);
+          await insertRowBelowHeader(token, rule.destination, layout.headerRowIndex, row, rule.valueInputOption);
           layout.dataRows.unshift(row);
           inserted.push(row);
         }

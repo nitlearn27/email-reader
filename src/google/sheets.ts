@@ -68,6 +68,7 @@ export async function insertRowBelowHeader(
   dest: Destination,
   headerRowIndex: number,
   row: string[],
+  valueInputOption: "RAW" | "USER_ENTERED" = "USER_ENTERED",
 ): Promise<void> {
   const gridIndex = headerRowIndex + 1; // 0-based position for the new row
 
@@ -95,7 +96,7 @@ export async function insertRowBelowHeader(
   const range = `${dest.tab}!A${rowNumber}:${colLetter(row.length - 1)}${rowNumber}`;
   await sheetsFetch(
     token,
-    `/${dest.spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+    `/${dest.spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=${valueInputOption}`,
     {
       method: "PUT",
       headers: { "content-type": "application/json" },

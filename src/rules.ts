@@ -3,6 +3,7 @@ import { parseNseTrades } from "./pdf/parse-nse";
 import { parseInvescoBody } from "./parse-invesco-body";
 import { parseGrowwBody } from "./parse-groww-body";
 import { parseIndmoneyBody } from "./parse-indmoney-body";
+import { parseIndmoneyGlobalOrder } from "./parse-indmoney-global-order";
 
 export interface Destination {
   spreadsheetId: string;
@@ -16,6 +17,7 @@ export interface Rule {
   from: string; // original sender address that must appear in the message (header or body)
   to?: string; // if set, this recipient must also appear in the message (header or body)
   subject: string; // phrase that must appear in the Subject (substring, case-insensitive)
+  subjectRegex?: string; // optional full-subject check after the broad Gmail query
   // Extra phrases that must ALL appear in the message. Used when one sender reuses the
   // same subject for many products (e.g. Groww sends "Units allocated" for every fund):
   // gating here keeps the other funds' emails out of the Gmail query entirely, so they
@@ -24,6 +26,7 @@ export interface Rule {
   source: "pdf" | "body";
   passwordEnv?: string; // (pdf) name of the Env secret holding the decryption password
   parser: string; // key into the parsers registry below
+  valueInputOption?: "RAW" | "USER_ENTERED"; // preserve exact row text when needed
   destination: Destination;
   columns: string[]; // sheet column order; parser output is aligned to this
   headerMatch: string[]; // lowercased cells that identify the header row
@@ -40,7 +43,7 @@ export const rules: Rule[] = rulesJson as Rule[];
  *
  * Add a new function here and reference it by key from rules.json as samples arrive.
  */
-export const parsers: Record<string, (text: string) => string[][] | null> = {
+export const parsers: Record<string, (text: string, subject: string, messageDate: string) => string[][] | null> = {
   "indmoney-units-allotted": (text) => parseIndmoneyBody(text),
   "nse-contract-note": (text) => parseNseTrades(text),
   "nse-contract-note-nit": (text) => {
@@ -49,6 +52,7 @@ export const parsers: Record<string, (text: string) => string[][] | null> = {
   },
   "invesco-processed-body": (text) => parseInvescoBody(text),
   "groww-units-allocated": (text) => parseGrowwBody(text),
+  "indmoney-global-order": parseIndmoneyGlobalOrder,
 };
 
 /**
@@ -65,7 +69,7 @@ export function buildQuery(label: string): string {
     return `(${parts.join(" ")})`;
   });
   const or = clauses.length === 1 ? clauses[0] : `(${clauses.join(" OR ")})`;
-  return `${or} -label:${label} newer_than:60d`;
+  return `${or} -label:${label} -in:sent newer_than:60d`;
 }
 
 /**
@@ -79,6 +83,7 @@ export function matchRule(subject: string, haystack: string): Rule | null {
     rules.find(
       (r) =>
         subj.includes(r.subject.toLowerCase()) &&
+        (!r.subjectRegex || new RegExp(r.subjectRegex, "i").test(subject.trim())) &&
         haystack.includes(r.from.toLowerCase()) &&
         (!r.to || haystack.includes(r.to.toLowerCase())) &&
         (r.contains ?? []).every((p) => haystack.includes(p.toLowerCase())),
