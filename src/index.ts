@@ -24,11 +24,13 @@ const app = new Hono<{ Bindings: Env }>();
 
 app.get("/", (c) => c.html(UI_HTML));
 
-app.get("/healthz", (c) => {
+app.get("/healthz", async (c) => {
   const e = c.env;
   const passwordEnvs = [...new Set(rules.map((r) => r.passwordEnv).filter(Boolean))] as string[];
+  const lastSync = await e.SYNC_STATE.get<{ ok: boolean }>("lastSync", "json");
   return c.json({
-    ok: true,
+    ok: lastSync?.ok ?? true,
+    lastSync,
     config: {
       GMAIL_CLIENT_ID: !!e.GMAIL_CLIENT_ID,
       GMAIL_CLIENT_SECRET: !!e.GMAIL_CLIENT_SECRET,
@@ -39,7 +41,7 @@ app.get("/healthz", (c) => {
         passwordEnvs.map((k) => [k, !!(e as unknown as Record<string, unknown>)[k]]),
       ),
     },
-  });
+  }, lastSync?.ok === false ? 503 : 200);
 });
 
 /** Test-only: run a parser over an uploaded PDF or raw body text, no Gmail/Sheets writes. */
@@ -72,7 +74,7 @@ app.post("/api/extract", async (c) => {
 /** Main pipeline: route new matching emails to their per-sender sheet. */
 app.post("/api/sync", async (c) => {
   const r = await runSync(c.env);
-  return c.json(r, "error" in r ? 500 : 200);
+  return c.json(r, "error" in r || r.errors.length > 0 ? 500 : 200);
 });
 
 type SyncResult = {
@@ -84,6 +86,29 @@ type SyncResult = {
 
 /** Run the full sync once. Shared by POST /api/sync and the cron handler. */
 async function runSync(env: Env): Promise<SyncResult | { error: string }> {
+  let result: SyncResult | { error: string };
+  try {
+    result = await performSync(env);
+  } catch (err) {
+    result = { error: `Sync failed: ${String(err)}` };
+  }
+  const summary = {
+    finishedAt: new Date().toISOString(),
+    ok: !("error" in result) && result.errors.length === 0,
+    processed: "error" in result ? 0 : result.processed.length,
+    skipped: "error" in result ? 0 : result.skipped.length,
+    errors: "error" in result ? 1 : result.errors.length,
+  };
+  try {
+    await env.SYNC_STATE.put("lastSync", JSON.stringify(summary));
+  } catch (err) {
+    console.error("Could not record sync status:", String(err));
+  }
+  if (!summary.ok) console.error("sync failed:", JSON.stringify(summary));
+  return result;
+}
+
+async function performSync(env: Env): Promise<SyncResult | { error: string }> {
   const result: SyncResult = { processed: [], skipped: [], errors: [] };
 
   let token: string;

@@ -1,3 +1,5 @@
+import { googleFetch } from "./retry";
+
 const BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
 
 interface MessageRef {
@@ -19,10 +21,10 @@ export interface GmailMessage {
 }
 
 async function gfetch<T>(token: string, path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await googleFetch(`${BASE}${path}`, {
     ...init,
     headers: { authorization: `Bearer ${token}`, ...(init?.headers ?? {}) },
-  });
+  }, path.endsWith("/modify") || !init?.method || init.method === "GET");
   if (!res.ok) {
     throw new Error(`Gmail ${path} failed: ${res.status} ${await res.text()}`);
   }
@@ -30,11 +32,19 @@ async function gfetch<T>(token: string, path: string, init?: RequestInit): Promi
 }
 
 export async function listMessages(token: string, query: string): Promise<MessageRef[]> {
-  const data = await gfetch<{ messages?: MessageRef[] }>(
-    token,
-    `/messages?q=${encodeURIComponent(query)}`,
-  );
-  return data.messages ?? [];
+  const messages: MessageRef[] = [];
+  let pageToken: string | undefined;
+  do {
+    const params = new URLSearchParams({ q: query, maxResults: "100" });
+    if (pageToken) params.set("pageToken", pageToken);
+    const data = await gfetch<{ messages?: MessageRef[]; nextPageToken?: string }>(
+      token,
+      `/messages?${params}`,
+    );
+    messages.push(...(data.messages ?? []));
+    pageToken = data.nextPageToken;
+  } while (pageToken);
+  return messages;
 }
 
 export async function getMessage(token: string, id: string): Promise<GmailMessage> {

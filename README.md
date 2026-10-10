@@ -11,13 +11,13 @@ configured `nit4infy2@gmail.com` inbox.
 
 ```
 POST /api/sync
-  → build query from rules: OR of matching phrases + -label:PR-Processed -in:sent + newer_than:60d
+  → build query from rules: OR of matching phrases + -label:PR-Processed -in:sent
   → find new matching emails  (unknown senders are never fetched)
   → for each: match rule by exact From + Subject
        source=pdf  → download attachment, decrypt with the rule's passwordEnv, extract text
        source=body → read the plain-text email body
   → run rule's parser → row aligned to the rule's columns
-  → dedup (rule.dedupColumns), insert row at top of the rule's destination sheet
+  → dedup (rule.dedupColumns), atomically insert and fill a row at top of the destination sheet
   → label email PR-Processed (so it is never reprocessed)
 ```
 
@@ -45,6 +45,16 @@ The Worker runs this sync **automatically every 6 hours** (Cloudflare Cron Trigg
 `wrangler.jsonc` and `npm run deploy`. The `SYNC_INTERVAL_MINUTES` var is a KV-gated floor
 that blocks runs closer together than its value. `POST /api/sync` stays available for manual
 runs (it ignores the gate). Watch a cron run live with `wrangler tail`.
+
+Sync reads every Gmail result page and has no age cutoff, so failed emails remain
+eligible for later runs. Google reads and safe repeatable writes retry temporary
+failures up to three attempts. Sheet row insertion and filling happen in one atomic
+batch; insertions are not blindly retried after an ambiguous network failure.
+Emails are labeled only after every parsed row is written or confirmed as a duplicate.
+Numeric duplicate keys ignore display differences such as `41.140` versus `41.14`.
+`/api/sync` returns HTTP 500 when any email fails, and `/healthz` includes the latest
+sync completion time and success/error counts in `lastSync`. Health returns HTTP
+503 if the last completed sync failed.
 
 ### Field Mappings
 
@@ -84,8 +94,8 @@ runs (it ignores the gate). Watch a cron run live with `wrangler tail`.
 
 Subjects must start with `BUY order of` or `SELL order of` (after any `Fwd:` prefix)
 and end with `is successful`. The original sender must be
-`transactions@transactions.indmoney.com`. `Requested Price` comes from the email's
-`Price:` field, not the dollar amount in the subject or `Amount:` field. `Order Type`
+`transactions@transactions.indmoney.com`. `Requested Price` is the email's
+`Price:` multiplied by `Shares:`, rounded to two decimal places. `Order Type`
 comes from the email (for example, `Limit`); `Status` is `Buy` or `Sell` from the
 subject. The original forwarded date, stock name, and shares fill the other columns.
 After parsing, the Worker writes the row and labels the email as processed. Sent

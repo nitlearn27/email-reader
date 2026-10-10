@@ -69,7 +69,7 @@ export function buildQuery(label: string): string {
     return `(${parts.join(" ")})`;
   });
   const or = clauses.length === 1 ? clauses[0] : `(${clauses.join(" OR ")})`;
-  return `${or} -label:${label} -in:sent newer_than:60d`;
+  return `${or} -label:${label} -in:sent`;
 }
 
 /**

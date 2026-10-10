@@ -1,4 +1,5 @@
 import type { Destination } from "../rules";
+import { googleFetch } from "./retry";
 
 const BASE = "https://sheets.googleapis.com/v4/spreadsheets";
 
@@ -8,7 +9,7 @@ export interface SheetLayout {
 }
 
 async function sheetsFetch<T>(token: string, path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await googleFetch(`${BASE}${path}`, {
     ...init,
     headers: { authorization: `Bearer ${token}`, ...(init?.headers ?? {}) },
   });
@@ -70,6 +71,9 @@ export async function insertRowBelowHeader(
   row: string[],
   valueInputOption: "RAW" | "USER_ENTERED" = "USER_ENTERED",
 ): Promise<void> {
+  if (row.some((value) => /[\t\r\n]/.test(value))) {
+    throw new Error("Row contains unexpected tabs or line breaks; email will retry without being labeled.");
+  }
   const gridIndex = headerRowIndex + 1; // 0-based position for the new row
 
   await sheetsFetch(token, `/${dest.spreadsheetId}:batchUpdate`, {
@@ -88,26 +92,39 @@ export async function insertRowBelowHeader(
             inheritFromBefore: false,
           },
         },
+        valueInputOption === "RAW"
+          ? {
+              updateCells: {
+                start: { sheetId: dest.gid, rowIndex: gridIndex, columnIndex: 0 },
+                rows: [{ values: row.map((value) => ({ userEnteredValue: { stringValue: value } })) }],
+                fields: "userEnteredValue",
+              },
+            }
+          : {
+              pasteData: {
+                coordinate: { sheetId: dest.gid, rowIndex: gridIndex, columnIndex: 0 },
+                data: row.join("\t"),
+                delimiter: "\t",
+                type: "PASTE_VALUES",
+              },
+            },
       ],
     }),
   });
-
-  const rowNumber = gridIndex + 1; // 1-based row for the A1 range
-  const range = `${dest.tab}!A${rowNumber}:${colLetter(row.length - 1)}${rowNumber}`;
-  await sheetsFetch(
-    token,
-    `/${dest.spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=${valueInputOption}`,
-    {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ values: [row] }),
-    },
-  );
 }
 
 /** Duplicate key built from the given column indices. */
 export function rowKey(row: string[], dedupColumns: number[]): string {
-  return dedupColumns.map((i) => (row[i] ?? "").trim().toLowerCase()).join("|");
+  return dedupColumns.map((i) => normalizeKeyCell(row[i] ?? "")).join("|");
+}
+
+function normalizeKeyCell(value: string): string {
+  const text = value.trim().toLowerCase();
+  const numeric = text.match(/^([₹$]?)(\d[\d,]*)(?:\.(\d+))?$/);
+  if (!numeric) return text;
+  const whole = numeric[2].replace(/,/g, "").replace(/^0+(?=\d)/, "");
+  const fraction = (numeric[3] ?? "").replace(/0+$/, "");
+  return `${numeric[1]}${whole}${fraction ? `.${fraction}` : ""}`;
 }
 
 export function isDuplicate(existing: string[][], row: string[], dedupColumns: number[]): boolean {

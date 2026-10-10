@@ -1,8 +1,9 @@
 import type { Env } from "../config";
+import { googleFetch } from "./retry";
 
 /** Exchange the long-lived refresh token for a short-lived access token. */
 export async function getAccessToken(env: Env): Promise<string> {
-  const res = await fetch("https://oauth2.googleapis.com/token", {
+  const res = await googleFetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -11,7 +12,7 @@ export async function getAccessToken(env: Env): Promise<string> {
       refresh_token: env.GMAIL_REFRESH_TOKEN,
       grant_type: "refresh_token",
     }),
-  });
+  }, true);
 
   if (!res.ok) {
     throw new Error(`OAuth token exchange failed: ${res.status} ${await res.text()}`);
